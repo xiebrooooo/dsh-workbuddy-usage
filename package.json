@@ -1,0 +1,53 @@
+{
+  "name": "dsh-workbuddy-usage",
+  "version": "1.1.0",
+  "description": "DSH 侧边栏用量插件：在左侧栏底部显示 workbuddy2api / CodeBuddy 的每日 Token 用量、积分消耗与账号剩余额度（Codex 统计风格，未破亿按「万」、破亿按「亿」）。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "config.example.json",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "workbuddy",
+    "codebuddy",
+    "usage",
+    "token",
+    "credits"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiebrooooo/dsh-workbuddy-usage.git"
+  },
+  "homepage": "https://github.com/xiebrooooo/dsh-workbuddy-usage#readme",
+  "bugs": {
+    "url": "https://github.com/xiebrooooo/dsh-workbuddy-usage/issues"
+  },
+  "author": "xiebrooooo",
+  "license": "MIT",
+  "dsh": {
+    "id": "dsh-workbuddy-usage",
+    "name": "WorkBuddy 用量",
+    "version": "1.1.0",
+    "permissions": "读取本地同源路由 /dsh-workbuddy-usage/api/usage 与 /dsh-workbuddy-usage/api/account（宿主代理 workbuddy2api 面板 /panel/api/usage 与 /panel/api/overview）",
+    "client": {
+      "platform": "web",
+      "immediately": true
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

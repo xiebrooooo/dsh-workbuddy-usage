@@ -1,0 +1,8 @@
+{
+  "baseUrl": "http://127.0.0.1:7863",
+  "apiKey": "REPLACE_WITH_YOUR_PANEL_API_KEY",
+  "routePrefix": "/dsh-workbuddy-usage",
+  "cacheTtlMs": 25000,
+  "accountTtlMs": 60000,
+  "timeoutMs": 20000
+}
