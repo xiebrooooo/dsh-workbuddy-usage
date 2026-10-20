@@ -18,6 +18,7 @@ window.__ModuleLoader__.load({
     var h = react.createElement;
 
     var API = "/dsh-workbuddy-usage/api/usage";
+    var API_CFG = "/dsh-workbuddy-usage/api/config";
     var SCOPES = [
       { id: "today", label: "今日" },
       { id: "7d", label: "近 7 天" },
@@ -319,6 +320,16 @@ window.__ModuleLoader__.load({
       var loading = loadPair[0], setLoading = loadPair[1];
       var anchorPair = react.useState({ left: 16, bottom: 120 });
       var anchor = anchorPair[0], setAnchor = anchorPair[1];
+      var cfgPair = react.useState(null);
+      var cfgInfo = cfgPair[0], setCfgInfo = cfgPair[1];
+      var formPair = react.useState({ baseUrl: "", apiKey: "" });
+      var form = formPair[0], setForm = formPair[1];
+      var settingsPair = react.useState(false);
+      var settingsOpen = settingsPair[0], setSettingsOpen = settingsPair[1];
+      var savingPair = react.useState(false);
+      var saving = savingPair[0], setSaving = savingPair[1];
+      var msgPair = react.useState(null);
+      var saveMsg = msgPair[0], setSaveMsg = msgPair[1];
 
       var pillRef = react.useRef(null);
       var panelRef = react.useRef(null);
@@ -354,6 +365,61 @@ window.__ModuleLoader__.load({
         var timer = setInterval(function () { load(true); }, period);
         return function () { clearInterval(timer); };
       }, [scope, open, load]);
+
+      var loadConfig = react.useCallback(function () {
+        return fetch(API_CFG, { headers: { accept: "application/json" }, cache: "no-store" })
+          .then(function (res) { return res.json(); })
+          .then(function (json) {
+            if (!json || !json.ok) return;
+            setCfgInfo(json);
+            setForm({ baseUrl: json.baseUrl, apiKey: "" });
+            if (!json.hasApiKey) setSettingsOpen(true);
+          })
+          .catch(function () {});
+      }, []);
+
+      var saveSettings = react.useCallback(function () {
+        if (saving) return;
+        setSaving(true);
+        setSaveMsg(null);
+        var payload = { baseUrl: form.baseUrl };
+        if (form.apiKey && form.apiKey.trim()) payload.apiKey = form.apiKey.trim();
+        return fetch(API_CFG, {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify(payload)
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (json) {
+            if (!json || !json.ok) {
+              setSaveMsg({ ok: false, text: (json && json.error) || "保存失败" });
+              return;
+            }
+            setCfgInfo(json);
+            setForm({ baseUrl: json.baseUrl, apiKey: "" });
+            if (json.test && json.test.ok) {
+              setSaveMsg({ ok: true, text: "已保存 · 连接正常" });
+              setSettingsOpen(false);
+              load(true);
+            } else {
+              setSaveMsg({ ok: false, text: "已保存，但连接失败：" + ((json.test && json.test.error) || "未知错误") });
+            }
+          })
+          .catch(function (e) {
+            setSaveMsg({ ok: false, text: String((e && e.message) || e) });
+          })
+          .then(function () {
+            setSaving(false);
+          });
+      }, [form.baseUrl, form.apiKey, saving, load]);
+
+      react.useEffect(function () {
+        loadConfig();
+      }, [loadConfig]);
+
+      react.useEffect(function () {
+        if (err && String(err).indexOf("未配置") >= 0) setSettingsOpen(true);
+      }, [err]);
 
       var measure = react.useCallback(function () {
         var el = pillRef.current;
@@ -495,6 +561,7 @@ window.__ModuleLoader__.load({
       );
 
       var panel = null;
+      var settingsPanel = null;
       if (open) {
         var models = (data && data.models) || [];
         var bars = condense((data && data.series) || [], 34);
@@ -779,23 +846,163 @@ window.__ModuleLoader__.load({
             h("span", { style: { fontSize: "10px", color: t.faint } },
               open ? "自动刷新 30s" : "自动刷新 3 分钟"),
             h(
-              "button",
-              {
-                onClick: function () { load(true); },
-                style: {
-                  border: "1px solid " + t.border,
-                  background: t.inner,
-                  color: t.text,
-                  borderRadius: "7px",
-                  padding: "3px 9px",
-                  fontSize: "10.5px",
-                  fontFamily: "inherit",
-                  cursor: "pointer"
-                }
-              },
-              loading ? "刷新中…" : "刷新"
+              "div",
+              { style: { display: "flex", alignItems: "center", gap: "6px" } },
+              h(
+                "button",
+                {
+                  onClick: function () { setSettingsOpen(true); },
+                  style: {
+                    border: "1px solid " + t.border,
+                    background: "transparent",
+                    color: t.sub,
+                    borderRadius: "7px",
+                    padding: "3px 9px",
+                    fontSize: "10.5px",
+                    fontFamily: "inherit",
+                    cursor: "pointer"
+                  }
+                },
+                "设置"
+              ),
+              h(
+                "button",
+                {
+                  onClick: function () { load(true); },
+                  style: {
+                    border: "1px solid " + t.border,
+                    background: t.inner,
+                    color: t.text,
+                    borderRadius: "7px",
+                    padding: "3px 9px",
+                    fontSize: "10.5px",
+                    fontFamily: "inherit",
+                    cursor: "pointer"
+                  }
+                },
+                loading ? "刷新中…" : "刷新"
+              )
             )
           )
+        );
+      }
+
+      if (open && settingsOpen) {
+        var inputStyle = {
+          width: "100%",
+          boxSizing: "border-box",
+          padding: "5px 8px",
+          borderRadius: "7px",
+          border: "1px solid " + t.border,
+          background: t.inner,
+          color: t.text,
+          fontFamily: "inherit",
+          fontSize: "11.5px",
+          lineHeight: "18px",
+          outline: "none"
+        };
+        var ghostBtn = {
+          border: "1px solid " + t.border,
+          background: "transparent",
+          color: t.sub,
+          borderRadius: "7px",
+          padding: "4px 10px",
+          fontSize: "10.5px",
+          fontFamily: "inherit",
+          cursor: "pointer"
+        };
+        var primaryBtn = {
+          border: "1px solid transparent",
+          background: t === LIGHT ? t.text : "#ededed",
+          color: t === LIGHT ? "#fff" : "#0b0c0e",
+          borderRadius: "7px",
+          padding: "4px 10px",
+          fontSize: "10.5px",
+          fontFamily: "inherit",
+          fontWeight: 600,
+          cursor: saving ? "default" : "pointer",
+          opacity: saving ? 0.7 : 1
+        };
+        settingsPanel = h(
+          "div",
+          {
+            style: {
+              position: "fixed",
+              left: anchor.left + "px",
+              bottom: anchor.bottom + "px",
+              width: PANEL_WIDTH + "px",
+              maxWidth: "calc(100vw - 24px)",
+              maxHeight: "min(70vh, 560px)",
+              overflowY: "auto",
+              zIndex: 2147483001,
+              boxSizing: "border-box",
+              padding: "12px 12px 10px",
+              borderRadius: "13px",
+              border: "1px solid " + t.border,
+              background: t.card,
+              color: t.text,
+              boxShadow: t.shadow,
+              backdropFilter: "blur(14px)",
+              fontSize: "12px",
+              lineHeight: "16px",
+              fontFamily: "inherit"
+            }
+          },
+          h(
+            "div",
+            { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" } },
+            h("span", { style: { fontWeight: 650, fontSize: "12.5px" } }, "WorkBuddy 用量 · 设置"),
+            h("button", { onClick: function () { setSettingsOpen(false); }, style: ghostBtn }, "完成")
+          ),
+          h("div", { style: { fontSize: "10px", color: t.sub, marginBottom: "3px" } }, "服务器地址"),
+          h("input", {
+            type: "text",
+            value: form.baseUrl,
+            placeholder: "http://127.0.0.1:7863",
+            spellCheck: false,
+            onChange: function (e) {
+              var v = e.target.value;
+              setForm(function (f) { return { baseUrl: v, apiKey: f.apiKey }; });
+            },
+            style: inputStyle
+          }),
+          h("div", { style: { fontSize: "10px", color: t.sub, margin: "9px 0 3px" } }, "API Key"),
+          h("input", {
+            type: "password",
+            value: form.apiKey,
+            spellCheck: false,
+            placeholder:
+              cfgInfo && cfgInfo.hasApiKey
+                ? "已保存 " + cfgInfo.apiKeyHint + "（留空则不修改）"
+                : "粘贴面板 API Key",
+            onChange: function (e) {
+              var v = e.target.value;
+              setForm(function (f) { return { baseUrl: f.baseUrl, apiKey: v }; });
+            },
+            style: inputStyle
+          }),
+          h("div", { style: { fontSize: "9.5px", color: t.faint, marginTop: "4px" } },
+            "填写网关地址（含端口）与面板 API Key，保存后写入插件目录的 config.json，只在本机生效。"),
+          saveMsg
+            ? h("div", {
+                style: {
+                  marginTop: "8px",
+                  fontSize: "10.5px",
+                  lineHeight: "14px",
+                  color: saveMsg.ok ? t.accent2 : t.err
+                }
+              }, saveMsg.text)
+            : null,
+          h(
+            "div",
+            { style: { display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "10px" } },
+            h("button", { onClick: function () { setSettingsOpen(false); }, style: ghostBtn }, "取消"),
+            h("button", { onClick: function () { saveSettings(); }, style: primaryBtn }, saving ? "测试中…" : "保存并测试")
+          ),
+          cfgInfo && cfgInfo.configPath
+            ? h("div", { style: { fontSize: "9px", color: t.faint, marginTop: "8px", wordBreak: "break-all" } },
+                "配置文件：" + cfgInfo.configPath)
+            : null
         );
       }
 
@@ -803,7 +1010,8 @@ window.__ModuleLoader__.load({
         "div",
         { style: { display: "flex", width: "100%", minWidth: "0", position: "relative" } },
         pill,
-        panel
+        panel,
+        settingsPanel
       );
     }
 

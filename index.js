@@ -8,7 +8,8 @@
  *
  * 配置解析顺序：环境变量 < 插件目录 config.json < 内置默认值。
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const CONFIG_URL = new URL("./config.json", import.meta.url);
 
@@ -209,8 +210,94 @@ export const name = "dsh-workbuddy-usage";
 export const inject = ["webServer"];
 
 export function apply(ctx) {
-  const cfg = loadConfig();
+  let cfg = loadConfig();
   const cache = new Map();
+
+  /* ---------------- 配置读写（面板内「设置」用） ---------------- */
+
+  function readJsonBody(req, limit = 65536) {
+    return new Promise((resolve, reject) => {
+      let size = 0;
+      const chunks = [];
+      req.on("data", (chunk) => {
+        size += chunk.length;
+        if (size > limit) {
+          reject(new Error("body_too_large"));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      req.on("end", () => {
+        if (chunks.length === 0) return resolve({});
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        } catch {
+          reject(new Error("invalid_json"));
+        }
+      });
+      req.on("error", reject);
+    });
+  }
+
+  function configView() {
+    const key = cfg.apiKey || "";
+    return {
+      ok: true,
+      baseUrl: cfg.baseUrl,
+      hasApiKey: Boolean(key),
+      apiKeyHint: key ? key.slice(0, 4) + "…" + key.slice(-4) : "",
+      routePrefix: cfg.routePrefix,
+      cacheTtlMs: cfg.cacheTtlMs,
+      accountTtlMs: cfg.accountTtlMs,
+      timeoutMs: cfg.timeoutMs,
+      configPath: fileURLToPath(CONFIG_URL),
+    };
+  }
+
+  function saveConfig(patch) {
+    let disk = {};
+    try {
+      disk = JSON.parse(readFileSync(CONFIG_URL, "utf8")) ?? {};
+    } catch {
+      disk = {};
+    }
+    const next = { ...disk };
+    if (typeof patch?.baseUrl === "string") {
+      const raw = patch.baseUrl.trim().replace(/\/+$/, "");
+      if (!/^https?:\/\/[^\s]+$/i.test(raw)) throw new Error("服务器地址需以 http:// 或 https:// 开头");
+      next.baseUrl = raw;
+    }
+    if (typeof patch?.apiKey === "string") next.apiKey = patch.apiKey.trim();
+    for (const field of ["timeoutMs", "cacheTtlMs", "accountTtlMs"]) {
+      if (patch?.[field] != null) {
+        const value = Number(patch[field]);
+        if (!Number.isFinite(value) || value <= 0) throw new Error(`${field} 必须是正数`);
+        next[field] = Math.round(value);
+      }
+    }
+    writeFileSync(CONFIG_URL, JSON.stringify(next, null, 2) + "\n", "utf8");
+    cfg = loadConfig();
+    cache.clear();
+    return configView();
+  }
+
+  /** 保存后立刻打一次上游，告诉用户「通不通」而不是让他自己猜。 */
+  async function probeUpstream() {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.min(cfg.timeoutMs, 10000));
+    try {
+      if (!cfg.apiKey) return { ok: false, error: "未填写 API Key" };
+      const res = await fetch(`${cfg.baseUrl}/panel/api/usage?hours=1`, {
+        headers: { authorization: `Bearer ${cfg.apiKey}`, accept: "application/json" },
+        signal: controller.signal,
+      });
+      return { ok: res.ok, status: res.status, error: res.ok ? undefined : `上游 ${res.status}` };
+    } catch (error) {
+      return { ok: false, error: String(error?.message ?? error) };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   async function getUsage(scope, refresh) {
     const now = Date.now();
@@ -219,7 +306,7 @@ export function apply(ctx) {
       return { ...hit.data, cacheAgeMs: now - hit.at, cached: true };
     }
     if (!cfg.apiKey) {
-      return { ok: false, scope, fetchedAt: now, error: "缺少 API Key：请在插件目录 config.json 里填写 apiKey" };
+      return { ok: false, scope, fetchedAt: now, error: "未配置 API Key：点开「使用量」面板 →「设置」填写服务器地址与 Key" };
     }
     try {
       const data = await fetchUsage(scope, cfg);
@@ -241,7 +328,7 @@ export function apply(ctx) {
       return { ...hit.data, cacheAgeMs: now - hit.at, cached: true };
     }
     if (!cfg.apiKey) {
-      return { ok: false, fetchedAt: now, error: "缺少 API Key：请在插件目录 config.json 里填写 apiKey" };
+      return { ok: false, fetchedAt: now, error: "未配置 API Key：点开「使用量」面板 →「设置」填写服务器地址与 Key" };
     }
     try {
       const data = await fetchAccount(cfg);
@@ -265,6 +352,23 @@ export function apply(ctx) {
           try {
             const url = new URL(req.url ?? "/", "http://127.0.0.1");
             const sub = url.pathname.slice(cfg.routePrefix.length).replace(/\/+$/, "");
+            if (sub === "/api/config") {
+              if (req.method === "GET" || req.method === "HEAD") {
+                sendJson(res, 200, configView());
+                return;
+              }
+              if (req.method === "POST") {
+                try {
+                  const view = saveConfig(await readJsonBody(req));
+                  sendJson(res, 200, { ...view, test: await probeUpstream() });
+                } catch (error) {
+                  sendJson(res, 400, { ok: false, error: String(error?.message ?? error) });
+                }
+                return;
+              }
+              sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+              return;
+            }
             if (req.method !== "GET" && req.method !== "HEAD") {
               sendJson(res, 405, { ok: false, error: "method_not_allowed" });
               return;
@@ -283,7 +387,7 @@ export function apply(ctx) {
               return;
             }
             if (sub === "/api/ping") {
-              sendJson(res, 200, { ok: true, baseUrl: cfg.baseUrl, scopes: SCOPES, routes: ["/api/usage", "/api/account", "/api/ping"] });
+              sendJson(res, 200, { ok: true, baseUrl: cfg.baseUrl, scopes: SCOPES, routes: ["/api/usage", "/api/account", "/api/config", "/api/ping"] });
               return;
             }
             sendJson(res, 404, { ok: false, error: "not_found" });

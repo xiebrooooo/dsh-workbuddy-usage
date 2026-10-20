@@ -16,7 +16,8 @@
 - **面板指标**：区间 Token 总量、请求数（含错误数、平均延迟）、积分（含每百万 Token 均价）、缓存命中率、输出速度、输入/输出占比条、时序柱状图。
 - **按模型明细**：每个模型的请求数、Token 量，以及**每百万 tokens 的积分消耗**（`1.25 积分/M`；零消耗模型标「免费」）。
 - **账号额度**：账号池总剩余 / 总额度进度条、可用 / 冷却 / 禁用数量、逐账号剩余额度迷你条与状态点，悬停可看冷却原因、最近使用模型、累计请求与套餐到期时间。
-- **自动刷新**：面板收起时 3 分钟、展开时 30 秒；「刷新」按钮带 `refresh=1` 绕过缓存。
+- **面板内设置**：面板右下角「设置」直接改服务器地址与 API Key，保存后写回 config.json、清缓存并自动探活，不用手改文件。
+- **自动刷新**：面板收起时 3 分钟、展开时 30 秒；「刷新」按钮带 efresh=1 绕过缓存。
 - **深/浅色自适应**：按祖先背景亮度自动切换色板，全部使用 DSH 设计 token（`--dsw-alias-*`、`--dsw-radius-*`）。
 
 ## 安装
@@ -30,7 +31,11 @@ git clone https://github.com/xiebrooooo/dsh-workbuddy-usage.git \
 
 （Windows 即 `C:\Users\<你>\.dsh\plugins\dsh-workbuddy-usage`）
 
-### 2. 写配置
+### 2. 写配置（二选一）
+
+**推荐：装好后在面板里填** —— 重启 DSH 后点侧栏「使用量」→ 面板右下角「设置」，填写服务器地址与 API Key，点「保存并测试」。插件会把配置写进自己的 `config.json` 并立刻验证连通性，无需手改文件。
+
+**或者：先手写配置文件**
 
 ```bash
 cd ~/.dsh/plugins/dsh-workbuddy-usage
@@ -93,6 +98,8 @@ pnpm install
 |---|---|
 | `GET {routePrefix}/api/usage?scope=today\|7d\|30d\|all[&refresh=1]` | 用量 + `account` 账号数据 |
 | `GET {routePrefix}/api/account[?refresh=1]` | 仅账号额度与状态 |
+| `GET {routePrefix}/api/config` | 读取当前配置（**不返回 Key 明文**，只给 `hasApiKey` 与 `apiKeyHint`） |
+| `POST {routePrefix}/api/config` | 保存 `{ baseUrl, apiKey?, timeoutMs? }`，写回 `config.json`、清缓存并立刻探活 |
 | `GET {routePrefix}/api/ping` | 连通性 / 配置自检（不含 Key） |
 
 ### 为什么必须有宿主半侧
@@ -136,6 +143,7 @@ pnpm install
 | 面板显示「HTTP 404」 | 宿主半侧未加载（检查 bundles / 重启） |
 | 改了界面没变化 | 忘了同步 `node_modules` 里的副本（见上） |
 | 数字不更新 | 路由层有 25s 缓存，点「刷新」走 `refresh=1` |
+| 「设置」保存后提示失败 / 404 | 宿主半侧改过代码但没重启 DSH（index.js 无热更新） |
 | 账号额度区块不显示 | 宿主半侧未重启；或上游 `/panel/api/overview` 不可用（面板会显示原因） |
 
 ## 兼容性
