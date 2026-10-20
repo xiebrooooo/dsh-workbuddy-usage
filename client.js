@@ -333,6 +333,7 @@ window.__ModuleLoader__.load({
 
       var pillRef = react.useRef(null);
       var panelRef = react.useRef(null);
+      var settingsRef = react.useRef(null);
       var tuneRef = react.useRef(0);
       var scopeRef = react.useRef(scope);
       scopeRef.current = scope;
@@ -464,8 +465,10 @@ window.__ModuleLoader__.load({
         function onDown(event) {
           var p = panelRef.current;
           var b = pillRef.current;
+          var s = settingsRef.current;
           if (p && p.contains(event.target)) return;
           if (b && b.contains(event.target)) return;
+          if (s && s.contains(event.target)) return;
           setOpen(false);
         }
         function onKey(event) {
@@ -691,29 +694,77 @@ window.__ModuleLoader__.load({
             ),
             h(
               "div",
-              { style: { display: "flex", gap: "2px", padding: "2px", borderRadius: "8px", background: t.inner } },
-              SCOPES.map(function (s) {
-                var active = s.id === scope;
-                return h(
-                  "button",
-                  {
-                    key: s.id,
-                    onClick: function () { setScope(s.id); },
-                    style: {
-                      border: "0",
-                      cursor: "pointer",
-                      padding: "2px 7px",
-                      borderRadius: "6px",
-                      fontSize: "10.5px",
-                      fontFamily: "inherit",
-                      color: active ? (t === LIGHT ? "#fff" : "#0b0c0e") : t.sub,
-                      background: active ? (t === LIGHT ? t.text : "#ededed") : "transparent",
-                      transition: "background .14s ease"
-                    }
-                  },
-                  s.label
-                );
-              })
+              { style: { display: "flex", alignItems: "center", gap: "4px" } },
+              h(
+                "button",
+                {
+                  title: "刷新数据",
+                  onClick: function () { load(true); },
+                  style: {
+                    border: "0",
+                    background: "transparent",
+                    color: loading ? t.faint : t.sub,
+                    cursor: loading ? "default" : "pointer",
+                    padding: "2px 5px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    lineHeight: "14px",
+                    fontFamily: "inherit"
+                  }
+                },
+                h("span", {
+                  style: {
+                    display: "inline-block",
+                    transform: loading ? "rotate(180deg)" : "none",
+                    transition: "transform .35s ease"
+                  }
+                }, "↻")
+              ),
+              h(
+                "button",
+                {
+                  title: "设置服务器地址与 API Key",
+                  onClick: function () { setSettingsOpen(true); },
+                  style: {
+                    border: "0",
+                    background: "transparent",
+                    color: t.sub,
+                    cursor: "pointer",
+                    padding: "2px 5px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    lineHeight: "14px",
+                    fontFamily: "inherit"
+                  }
+                },
+                "⚙"
+              ),
+              h(
+                "div",
+                { style: { display: "flex", gap: "2px", padding: "2px", borderRadius: "8px", background: t.inner } },
+                SCOPES.map(function (s) {
+                  var active = s.id === scope;
+                  return h(
+                    "button",
+                    {
+                      key: s.id,
+                      onClick: function () { setScope(s.id); },
+                      style: {
+                        border: "0",
+                        cursor: "pointer",
+                        padding: "2px 7px",
+                        borderRadius: "6px",
+                        fontSize: "10.5px",
+                        fontFamily: "inherit",
+                        color: active ? (t === LIGHT ? "#fff" : "#0b0c0e") : t.sub,
+                        background: active ? (t === LIGHT ? t.text : "#ededed") : "transparent",
+                        transition: "background .14s ease"
+                      }
+                    },
+                    s.label
+                  );
+                })
+              )
             )
           ),
 
@@ -864,23 +915,6 @@ window.__ModuleLoader__.load({
                   }
                 },
                 "设置"
-              ),
-              h(
-                "button",
-                {
-                  onClick: function () { load(true); },
-                  style: {
-                    border: "1px solid " + t.border,
-                    background: t.inner,
-                    color: t.text,
-                    borderRadius: "7px",
-                    padding: "3px 9px",
-                    fontSize: "10.5px",
-                    fontFamily: "inherit",
-                    cursor: "pointer"
-                  }
-                },
-                loading ? "刷新中…" : "刷新"
               )
             )
           )
@@ -926,6 +960,7 @@ window.__ModuleLoader__.load({
         settingsPanel = h(
           "div",
           {
+            ref: settingsRef,
             style: {
               position: "fixed",
               left: anchor.left + "px",
@@ -1015,6 +1050,172 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /* ===== DSH 设置页分区：服务器地址 / API Key ===== */
+
+    var SEC_LABEL = {
+      display: "block",
+      fontSize: "12px",
+      fontWeight: 600,
+      color: "var(--dsw-alias-label-primary, inherit)",
+      marginBottom: "6px"
+    };
+    var SEC_INPUT = {
+      boxSizing: "border-box",
+      width: "100%",
+      height: "36px",
+      padding: "0 10px",
+      borderRadius: "var(--dsw-radius-md, 8px)",
+      border: "1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3))",
+      background: "var(--dsw-alias-bg-layer-2, transparent)",
+      color: "var(--dsw-alias-label-primary, inherit)",
+      fontFamily: "inherit",
+      fontSize: "13px",
+      lineHeight: "20px",
+      outline: "none"
+    };
+    var SEC_HINT = {
+      marginTop: "6px",
+      fontSize: "12px",
+      lineHeight: "17px",
+      color: "var(--dsw-alias-label-secondary, rgba(128,128,128,.9))"
+    };
+    var SEC_BTN = {
+      height: "32px",
+      padding: "0 14px",
+      borderRadius: "var(--dsw-radius-md, 8px)",
+      border: "1px solid var(--dsw-alias-border-l2, rgba(128,128,128,.3))",
+      background: "transparent",
+      color: "var(--dsw-alias-label-primary, inherit)",
+      fontFamily: "inherit",
+      fontSize: "13px",
+      cursor: "pointer"
+    };
+    var SEC_PRIMARY = {
+      height: "32px",
+      padding: "0 14px",
+      borderRadius: "var(--dsw-radius-md, 8px)",
+      border: "1px solid transparent",
+      background: "var(--dsw-alias-state-business-primary, #4d6bfe)",
+      color: "#fff",
+      fontFamily: "inherit",
+      fontSize: "13px",
+      fontWeight: 600,
+      cursor: "pointer"
+    };
+
+    function SettingsSection() {
+      var infoState = react.useState(null);
+      var info = infoState[0];
+      var setInfo = infoState[1];
+      var formState = react.useState({ baseUrl: "", apiKey: "" });
+      var form = formState[0];
+      var setForm = formState[1];
+      var savingState = react.useState(false);
+      var saving = savingState[0];
+      var setSaving = savingState[1];
+      var msgState = react.useState(null);
+      var msg = msgState[0];
+      var setMsg = msgState[1];
+
+      var load = react.useCallback(function () {
+        fetch(API_CFG, { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (json) {
+            if (!json || !json.ok) return;
+            setInfo(json);
+            setForm({ baseUrl: json.baseUrl || "", apiKey: "" });
+          })
+          .catch(function () {});
+      }, []);
+      react.useEffect(function () { load(); }, [load]);
+
+      var save = react.useCallback(function () {
+        if (saving) return;
+        setSaving(true);
+        setMsg(null);
+        var body = { baseUrl: String(form.baseUrl || "").trim() };
+        if (String(form.apiKey || "").trim() !== "") body.apiKey = String(form.apiKey).trim();
+        fetch(API_CFG, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body)
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (json) {
+            if (!json || !json.ok) {
+              setMsg({ ok: false, text: (json && json.error) || "保存失败" });
+              return;
+            }
+            setInfo(json);
+            setForm({ baseUrl: json.baseUrl, apiKey: "" });
+            if (json.test && json.test.ok) setMsg({ ok: true, text: "已保存，连接正常" });
+            else setMsg({ ok: false, text: "已保存，但连接失败：" + ((json.test && json.test.error) || "未知错误") });
+          })
+          .catch(function (e) {
+            setMsg({ ok: false, text: String((e && e.message) || e) });
+          })
+          .then(function () { setSaving(false); });
+      }, [form.baseUrl, form.apiKey, saving]);
+
+      return h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", gap: "16px", maxWidth: "560px", paddingBottom: "8px" } },
+        h(
+          "div",
+          null,
+          h("label", { style: SEC_LABEL }, "服务器地址"),
+          h("input", {
+            type: "text",
+            value: form.baseUrl,
+            placeholder: "http://127.0.0.1:7863",
+            spellCheck: false,
+            onChange: function (e) {
+              var v = e.target.value;
+              setForm(function (f) { return { baseUrl: v, apiKey: f.apiKey }; });
+            },
+            style: SEC_INPUT
+          }),
+          h("div", { style: SEC_HINT }, "workbuddy2api 网关地址，含协议与端口，例如 http://127.0.0.1:7863")
+        ),
+        h(
+          "div",
+          null,
+          h("label", { style: SEC_LABEL }, "API Key"),
+          h("input", {
+            type: "password",
+            value: form.apiKey,
+            spellCheck: false,
+            placeholder: info && info.hasApiKey ? "已保存 " + info.apiKeyHint + "（留空则不修改）" : "粘贴面板 API Key",
+            onChange: function (e) {
+              var v = e.target.value;
+              setForm(function (f) { return { baseUrl: f.baseUrl, apiKey: v }; });
+            },
+            style: SEC_INPUT
+          }),
+          h("div", { style: SEC_HINT }, "面板用的 Bearer Key，保存后写入插件目录的 config.json，只在本机生效。")
+        ),
+        msg
+          ? h("div", {
+              style: {
+                fontSize: "12.5px",
+                lineHeight: "18px",
+                color: msg.ok ? "var(--dsw-alias-state-success-primary, #2aa26a)" : "var(--dsw-alias-state-error-primary, #e5484d)"
+              }
+            }, msg.text)
+          : null,
+        h(
+          "div",
+          { style: { display: "flex", gap: "8px", alignItems: "center" } },
+          h("button", { type: "button", onClick: save, style: SEC_PRIMARY }, saving ? "测试中…" : "保存并测试"),
+          h("button", { type: "button", onClick: load, style: SEC_BTN }, "重新载入"),
+          info && info.configPath
+            ? h("span", { style: { fontSize: "11.5px", color: "var(--dsw-alias-label-secondary, rgba(128,128,128,.9))", wordBreak: "break-all" } }, info.configPath)
+            : null
+        )
+      );
+    }
+
     var STYLE_ID = "dsh-workbuddy-usage/style";
 
     /* 侧边栏条目外观对齐 DSH 原生：ghost 按钮 + 原生交互色 token。 */
@@ -1040,6 +1241,18 @@ window.__ModuleLoader__.load({
         return ctx.slots.register(
           { name: "sidebar.footer.action", id: "workbuddy-usage", order: 25 },
           UsageDock
+        );
+      });
+      /* 同时在 DSH「设置」里提供独立分区，保证一定能进设置界面。 */
+      ctx.slots.inject("settings.section", function () {
+        return ctx.slots.register(
+          {
+            name: "settings.section",
+            id: "workbuddy-usage",
+            order: 120,
+            label: function () { return "WorkBuddy 用量"; }
+          },
+          SettingsSection
         );
       });
     }
